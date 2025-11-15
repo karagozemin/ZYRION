@@ -1,0 +1,13 @@
+node_modules
+target
+.git
+.env
+*.log
+dist
+build
+zyrion/contract
+zyrion/scripts
+*.md
+LICENSE
+
+
