@@ -2,7 +2,7 @@
   <img src="zyrion/zyrion/logo.png" alt="ZYRION Logo" width="220" />
 </div>
 
-# ZYRION – Mock Linera Prediction Markets
+# ZYRION – Linera Prediction Markets
 
 Zyrion is a playground for building prediction-market UX on top of Linera-style microchains.  
 It currently runs entirely in **mock mode**, so you can deploy it to Vercel/Netlify and let anyone try the flows without installing a wallet.
