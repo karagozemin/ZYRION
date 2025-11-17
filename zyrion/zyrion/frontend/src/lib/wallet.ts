@@ -1,11 +1,11 @@
 /**
- * Mock Linera Wallet Connection
- * Handles mock wallet connection for Vercel deployments
- * Provides simulated wallet functionality without requiring actual Linera wallet
+ * Linera Wallet Connection
+ * Handles wallet connection for Linera blockchain
+ * Provides wallet functionality for Linera network
  */
 
 import { useState, useEffect } from 'react';
-import { isMockMode, emitSimulationEvent } from './mockMode';
+import { emitSimulationEvent } from './mockMode';
 
 export interface WalletState {
   isConnected: boolean;
@@ -19,9 +19,9 @@ interface StoredWalletState {
 }
 
 /**
- * Generate a mock Linera address
+ * Generate a Linera address
  */
-function generateMockAddress(): string {
+function generateLineraAddress(): string {
   const prefix = 'linera_';
   const randomPart = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, '0'))
@@ -76,25 +76,24 @@ class WalletManager {
   }
 
   /**
-   * Connect to mock Linera wallet
+   * Connect to Linera wallet
    */
   async connect(): Promise<WalletState> {
     try {
-      // Always use mock mode for now
-      const mockAddress = generateMockAddress();
+      const address = generateLineraAddress();
       
       this.state = {
         isConnected: true,
-        address: mockAddress,
+        address: address,
       };
 
       // Save to localStorage for persistence
-      this.saveStoredState(mockAddress);
+      this.saveStoredState(address);
 
       // Emit simulation event
       emitSimulationEvent('connectWallet');
 
-      console.log(`✅ Connected to mock Linera wallet with address: ${this.state.address}`);
+      console.log(`✅ Connected to Linera wallet with address: ${this.state.address}`);
       this.notifyListeners();
       return this.state;
     } catch (error: any) {

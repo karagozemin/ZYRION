@@ -5,6 +5,7 @@ import BettingModal from '../components/BettingModal'
 import { getAllMarkets, Market, getClaimableRewards, claimReward } from '../lib/contract'
 import { useWallet } from '../lib/wallet'
 import { formatLineraAmount } from '../lib/linera'
+import { showToast } from '../components/Toast'
 
 export default function MarketDetailPage() {
   const { id } = useParams()
@@ -90,12 +91,12 @@ export default function MarketDetailPage() {
     setClaiming(true)
     try {
       await claimReward(market.id, betId)
-      alert('Reward claimed successfully!')
+      showToast('Reward claimed successfully!', 'success')
       await loadClaimableRewards()
       await loadMarket() // Reload market data
     } catch (err: any) {
       console.error('Error claiming reward:', err)
-      alert(err.message || 'Failed to claim reward')
+      showToast(err.message || 'Failed to claim reward', 'error')
     } finally {
       setClaiming(false)
     }

@@ -5,7 +5,7 @@ import CreateMarketPage from './pages/CreateMarketPage'
 import MarketDetailPage from './pages/MarketDetailPage'
 import MyMarketsPage from './pages/MyMarketsPage'
 import DarkVeil from './components/DarkVeil'
-import { SimulationFeed } from './components/SimulationFeed'
+import ToastContainer from './components/Toast'
 
 function App() {
   return (
@@ -30,7 +30,7 @@ function App() {
         {/* Content overlay */}
         <div className="relative z-10 min-h-screen">
           <Header />
-          <SimulationFeed />
+          <ToastContainer />
           <main className="container mx-auto px-4 py-8">
             <Routes>
               <Route path="/" element={<HomePage />} />

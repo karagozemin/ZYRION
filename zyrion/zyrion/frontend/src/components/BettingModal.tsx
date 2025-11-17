@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useWallet } from '../lib/wallet'
 import { placeBet } from '../lib/contract'
+import { showToast } from './Toast'
 
 interface BettingModalProps {
   marketId: number
@@ -36,7 +37,7 @@ export default function BettingModal({ marketId, option, onClose }: BettingModal
       // Place bet (may include coins parameter if Bearby wallet supports it)
       await placeBet(marketId, option, amount)
       
-      alert(`Bet placed successfully!`)
+      showToast('Bet placed successfully!', 'success')
       onClose()
       // Trigger a custom event to reload market data
       window.dispatchEvent(new Event('marketUpdated'))

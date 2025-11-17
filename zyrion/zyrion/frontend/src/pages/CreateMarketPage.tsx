@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWallet } from '../lib/wallet'
 import { createMarket } from '../lib/contract'
+import { showToast } from '../components/Toast'
 
 export default function CreateMarketPage() {
   const navigate = useNavigate()
@@ -83,6 +84,7 @@ export default function CreateMarketPage() {
       
       console.log('Market created! Operation ID:', operationId, 'Market:', market)
       
+      showToast('Market created successfully!', 'success')
       navigate('/')
     } catch (err: any) {
       console.error('Error creating market:', err)

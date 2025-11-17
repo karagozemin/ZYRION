@@ -611,12 +611,12 @@ export async function getAllMarkets(): Promise<Market[]> {
   const localMarkets = getLocalMarkets();
   console.log('Local markets:', localMarkets.length);
 
-  // Add default mock markets if in mock mode and no markets exist
+  // Add default mock markets if in mock mode (always show in mock mode)
   let mockMarkets: Market[] = [];
-  if (isMockMode() && marketsFromSupabase.length === 0 && localMarkets.length === 0) {
+  if (isMockMode()) {
     // Convert DEFAULT_MOCK_MARKETS to Market format
     mockMarkets = DEFAULT_MOCK_MARKETS.map((mock, index) => ({
-      id: parseInt(mock.id.replace('mock-', '')) || (1000 + index), // Fallback to numeric ID
+      id: parseInt(mock.id.replace('mock-', '')) || (10000 + index), // Use 10000+ to avoid conflicts
       creator: mock.creator,
       question: mock.question,
       description: mock.description,

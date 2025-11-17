@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useWallet } from '../lib/wallet'
 import { shortAddress } from '../lib/linera'
 import { getCurrentPoints, getPointsHistory } from '../lib/mockMode'
+import { showToast } from './Toast'
 import logo from '../assets/logo.jpeg'
 
 export default function Header() {
@@ -26,9 +27,10 @@ export default function Header() {
   const handleConnect = async () => {
     try {
       await connect()
+      showToast('Wallet connected successfully!', 'success')
     } catch (error: any) {
       console.error('Failed to connect:', error)
-      alert(error.message || 'Failed to connect wallet. Please install Linera wallet.')
+      showToast(error.message || 'Failed to connect wallet. Please install Linera wallet.', 'error')
     }
   }
 

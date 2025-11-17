@@ -9,12 +9,21 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+// Create Supabase client only if both URL and key are provided
+let supabaseClient: ReturnType<typeof createClient> | null = null;
+
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  try {
+    supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (error) {
+    console.error('Failed to create Supabase client:', error);
+  }
+} else {
   console.warn('Supabase URL or Anon Key not set. Database features will be disabled.');
 }
 
-// Create Supabase client
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Export supabase client (can be null if not configured)
+export const supabase = supabaseClient as ReturnType<typeof createClient> | null;
 
 // Database types
 export interface SupabaseMarket {
@@ -45,7 +54,7 @@ export interface SupabaseMarket {
  * Save market to Supabase
  */
 export async function saveMarketToSupabase(market: SupabaseMarket): Promise<void> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, skipping database save');
     return;
   }
@@ -82,7 +91,11 @@ export async function saveMarketToSupabase(market: SupabaseMarket): Promise<void
       marketData.max_reward = market.max_reward;
     }
 
-    const { error } = await supabase
+    const client = supabase;
+    if (!client) return;
+    
+    // @ts-ignore - Supabase client type inference issue
+    const { error } = await client
       .from('markets')
       .upsert(marketData, {
         onConflict: 'market_id', // Update if market_id already exists
@@ -112,13 +125,16 @@ export async function saveMarketToSupabase(market: SupabaseMarket): Promise<void
  * Get all markets from Supabase
  */
 export async function getMarketsFromSupabase(): Promise<SupabaseMarket[]> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, returning empty array');
     return [];
   }
 
   try {
-    const { data, error } = await supabase
+    const client = supabase;
+    if (!client) return [];
+    
+    const { data, error } = await client
       .from('markets')
       .select('*')
       .order('created_at', { ascending: false });
@@ -142,13 +158,18 @@ export async function updateMarketInSupabase(
   marketId: number,
   updates: Partial<SupabaseMarket>
 ): Promise<void> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, skipping database update');
     return;
   }
 
   try {
-    const { error } = await supabase
+    const client = supabase;
+    if (!client) return;
+    
+    // @ts-ignore - Supabase client type inference issue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (client as any)
       .from('markets')
       .update(updates)
       .eq('market_id', marketId);
@@ -182,13 +203,18 @@ export interface UserBet {
  * Save user bet to Supabase
  */
 export async function saveUserBet(bet: UserBet): Promise<void> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, skipping user bet save');
     return;
   }
 
   try {
-    const { error } = await supabase
+    const client = supabase;
+    if (!client) return;
+    
+    // @ts-ignore - Supabase client type inference issue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (client as any)
       .from('user_bets')
       .upsert({
         market_id: bet.market_id,
@@ -218,13 +244,16 @@ export async function saveUserBet(bet: UserBet): Promise<void> {
  * Get user bets for a market
  */
 export async function getUserBetsForMarket(marketId: number, userAddress: string): Promise<UserBet[]> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, returning empty array');
     return [];
   }
 
   try {
-    const { data, error } = await supabase
+    const client = supabase;
+    if (!client) return [];
+    
+    const { data, error } = await client
       .from('user_bets')
       .select('*')
       .eq('market_id', marketId)
@@ -246,14 +275,18 @@ export async function getUserBetsForMarket(marketId: number, userAddress: string
  * Calculate and update rewards for winners when market is resolved
  */
 export async function calculateAndDistributeRewards(marketId: number, correctAnswer: string, maxReward: number = 10): Promise<void> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, skipping reward calculation');
     return;
   }
 
   try {
+    const client = supabase;
+    if (!client) return;
+    
     // Get all bets for the correct answer
-    const { data: winningBets, error: fetchError } = await supabase
+    // @ts-ignore - Supabase client type inference issue
+    const { data: winningBets, error: fetchError } = await client
       .from('user_bets')
       .select('*')
       .eq('market_id', marketId)
@@ -271,7 +304,7 @@ export async function calculateAndDistributeRewards(marketId: number, correctAns
 
     // Calculate rewards: 2x bet amount, max maxReward MAS
     // bet.amount is in nanoMAS (string), convert to MAS first
-    const updates = winningBets.map(bet => {
+    const updates = (winningBets as UserBet[]).map(bet => {
       const betAmountNano = BigInt(bet.amount);
       const betAmountMAS = Number(betAmountNano) / 1e9; // Convert nanoMAS to MAS
       const rewardAmountMAS = Math.min(betAmountMAS * 2, maxReward);
@@ -285,7 +318,10 @@ export async function calculateAndDistributeRewards(marketId: number, correctAns
 
     // Update all winning bets with reward amounts
     for (const update of updates) {
-      const { error: updateError } = await supabase
+      if (!client) continue;
+      // @ts-ignore - Supabase client type inference issue
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: updateError } = await (client as any)
         .from('user_bets')
         .update({ reward_amount: update.reward_amount })
         .eq('id', update.id);
@@ -306,13 +342,18 @@ export async function calculateAndDistributeRewards(marketId: number, correctAns
  * Claim reward for a user bet
  */
 export async function claimRewardForBet(betId: number): Promise<void> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  if (!supabase || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.warn('Supabase not configured, skipping reward claim');
     return;
   }
 
   try {
-    const { error } = await supabase
+    const client = supabase;
+    if (!client) return;
+    
+    // @ts-ignore - Supabase client type inference issue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (client as any)
       .from('user_bets')
       .update({ claimed: true })
       .eq('id', betId);
