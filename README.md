@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Zyrion-Photoroom.png" alt="ZYRION Logo" width="220" />
+  <img src="zyrion/zyrion/logo.png" alt="ZYRION Logo" width="220" />
 </div>
 
 # ZYRION – Mock Linera Prediction Markets

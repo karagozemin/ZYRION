@@ -4,7 +4,7 @@ import { useWallet } from '../lib/wallet'
 import { shortAddress } from '../lib/linera'
 import { getCurrentPoints, getPointsHistory } from '../lib/mockMode'
 import { showToast } from './Toast'
-import logo from '../assets/logo.jpeg'
+import logo from '../assets/logo.png'
 
 export default function Header() {
   const { isConnected, address, connect, disconnect } = useWallet()
