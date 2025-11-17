@@ -3,9 +3,23 @@
  * Provides a set of default markets for display when no real data is available
  */
 
-import { Market } from '../types';
+interface MockMarket {
+  id: string;
+  question: string;
+  description: string;
+  creator: string;
+  createdAt: string;
+  endsAt: string;
+  status: 'active' | 'resolved' | 'locked';
+  options: string[];
+  totalPool: number;
+  optionAmounts: Record<string, number>;
+  correctAnswer: string | null;
+  resolvedAt: string | null;
+  maxReward: number;
+}
 
-export const DEFAULT_MOCK_MARKETS: Market[] = [
+export const DEFAULT_MOCK_MARKETS: MockMarket[] = [
   {
     id: 'mock-1',
     question: 'Will Bitcoin reach $100,000 by end of 2024?',

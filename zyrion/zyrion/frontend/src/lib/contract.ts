@@ -34,7 +34,6 @@ console.log('Contract Address:', CONTRACT_ADDRESS || 'NOT SET');
 // ============================================================================
 
 const LOCAL_MARKETS_KEY = 'zyrion_local_markets';
-const MOCK_MARKET_OVERRIDES_KEY = 'zyrion_mock_market_overrides';
 
 /**
  * Save a market to local storage (optimistic update)
@@ -266,29 +265,32 @@ export async function resolveMarket(
   winningOption: 'up' | 'down',
   resolutionPrice: number,
 ): Promise<string> {
-  if (!CONTRACT_ADDRESS) {
-    throw new Error(
-      'Contract not deployed. Please set VITE_CONTRACT_ADDRESS in .env file'
-    );
+  // Mock mode: simulate market resolution
+  if (isMockMode() || !CONTRACT_ADDRESS) {
+    // Update market status in Supabase
+    try {
+      await updateMarketInSupabase(marketId, {
+        status: 'Resolved',
+        winning_option: winningOption === 'up' ? 'Up' : 'Down',
+        resolution_price: resolutionPrice,
+      });
+      
+      const operationId = `mock_resolve_${marketId}_${Date.now()}`;
+      console.log('Market resolved (mock):', { marketId, winningOption, resolutionPrice, operationId });
+      return operationId;
+    } catch (error: any) {
+      console.error('Error resolving market:', error);
+      throw error;
+    }
   }
 
-  const betOption = winningOption === 'up' ? 0 : 1;
-
-  const args = new Args()
-    .addU64(BigInt(marketId))
-    .addU8(BigInt(betOption))
-    .addU64(BigInt(resolutionPrice));
-
-  return await walletManager.sendOperation(
-    CONTRACT_ADDRESS,
-    'resolveMarket',
-    args.serialize(),
-  );
+  // Real mode: call contract (not implemented yet for Linera)
+  throw new Error('Real contract calls not yet implemented for Linera');
 }
 
 /**
  * Claim reward from a resolved market (question-answer style)
- * Sends reward MAS to user's wallet
+ * Sends reward LIN to user's wallet
  */
 export async function claimReward(marketId: number, betId: number): Promise<string> {
   const { address } = walletManager.getState();
@@ -430,7 +432,7 @@ export interface Market {
   options?: string[]; // e.g., ['Option A', 'Option B', 'Option C', 'Option D']
   correctAnswer?: string; // The correct answer selected by creator
   bets?: Record<string, string>; // { option: totalAmount } e.g., { 'Option A': '100', 'Option B': '50' }
-  maxReward?: number; // Maximum reward per winner (default: 10 MAS)
+  maxReward?: number; // Maximum reward per winner (default: 10 LIN)
   createdAt: number;
   resolutionPrice: number;
   totalPool: string;
@@ -447,233 +449,52 @@ export interface Bet {
 
 /**
  * Get market details
+ * Uses getAllMarkets internally (mock mode compatible)
  */
 export async function getMarketDetails(marketId: number): Promise<Market> {
-  if (!CONTRACT_ADDRESS) {
-    throw new Error(
-      'Contract not deployed. Please set VITE_CONTRACT_ADDRESS in .env file'
-    );
-  }
-
-  // Use public provider for read-only calls (doesn't require wallet connection)
-  const publicProvider = JsonRpcPublicProvider.fromRPCUrl(CURRENT_NETWORK.rpcUrl);
-  const contract = new SmartContract(publicProvider, CONTRACT_ADDRESS);
-  const args = new Args().addU64(BigInt(marketId));
-
-  const result = await contract.read('getMarketDetails', args);
-
-  // Deserialize market data
-  console.log(`getMarketDetails for market ${marketId}, result length:`, result.value?.length);
-  console.log(`getMarketDetails result info:`, result.info);
+  const allMarkets = await getAllMarkets();
+  const market = allMarkets.find(m => m.id === marketId);
   
-  if (result.info?.error) {
-    throw new Error(result.info.error);
+  if (!market) {
+    throw new Error(`Market ${marketId} not found`);
   }
   
-  if (!result.value || result.value.length === 0) {
-    throw new Error(`Market ${marketId} not found or empty result`);
-  }
-
-  try {
-    const resultArgs = new Args(result.value);
-    console.log(`Deserializing market ${marketId}...`);
-    const id = Number(resultArgs.nextU64());
-    const creator = resultArgs.nextString();
-    const question = resultArgs.nextString();
-    const description = resultArgs.nextString();
-    const endTime = Number(resultArgs.nextU64());
-    const statusCode = Number(resultArgs.nextU8());
-    const totalUpBets = resultArgs.nextU64().toString();
-    const totalDownBets = resultArgs.nextU64().toString();
-    const winningOptionCode = Number(resultArgs.nextI32());
-    const createdAt = Number(resultArgs.nextU64());
-    const resolutionPrice = Number(resultArgs.nextU64());
-
-    const statusMap = ['Active', 'Locked', 'Resolved'] as const;
-    const status = statusMap[statusCode] || 'Active';
-
-    let winningOption: 'Up' | 'Down' | null = null;
-    if (winningOptionCode === 0) winningOption = 'Up';
-    else if (winningOptionCode === 1) winningOption = 'Down';
-
-    const totalPool = (BigInt(totalUpBets) + BigInt(totalDownBets)).toString();
-
-    return {
-      id,
-      creator,
-      question,
-      description,
-      endTime,
-      status,
-      totalUpBets,
-      totalDownBets,
-      winningOption,
-      createdAt,
-      resolutionPrice,
-      totalPool,
-    };
-  } catch (error: any) {
-    console.error(`Error deserializing market ${marketId}:`, error);
-    console.error('Result bytes:', result.value);
-    throw new Error(`Failed to deserialize market ${marketId}: ${error.message}`);
-  }
+  return market;
 }
 
 /**
  * Get user bet details
+ * Uses Supabase internally (mock mode compatible)
  */
 export async function getUserBetDetails(
   marketId: number,
   userAddress: string,
 ): Promise<Bet> {
-  if (!CONTRACT_ADDRESS) {
-    throw new Error(
-      'Contract not deployed. Please set VITE_CONTRACT_ADDRESS in .env file'
-    );
+  const userBets = await getUserBetsForMarket(marketId, userAddress);
+  
+  if (userBets.length === 0) {
+    throw new Error('No bet found for this user on this market');
   }
-
-  // Use public provider for read-only calls (doesn't require wallet connection)
-  const publicProvider = JsonRpcPublicProvider.fromRPCUrl(CURRENT_NETWORK.rpcUrl);
-  const contract = new SmartContract(publicProvider, CONTRACT_ADDRESS);
-  const args = new Args()
-    .addU64(BigInt(marketId))
-    .addString(userAddress);
-
-  const result = await contract.read('getUserBetDetails', args);
-
-  if (result.info?.error) {
-    throw new Error(result.info.error);
-  }
-
-  // Deserialize bet data
-  const resultArgs = new Args(result.value);
-  const betMarketId = Number(resultArgs.nextU64());
-  const user = resultArgs.nextString();
-  const optionCode = Number(resultArgs.nextU8());
-  const amount = resultArgs.nextU64().toString();
-  const timestamp = Number(resultArgs.nextU64());
-  const claimed = Number(resultArgs.nextU8()) !== 0;
-
-  const option = optionCode === 0 ? 'Up' : 'Down';
-
+  
+  // Return first bet (for backward compatibility with old format)
+  const bet = userBets[0];
   return {
-    marketId: betMarketId,
-    user,
-    option,
-    amount,
-    timestamp,
-    claimed,
+    marketId,
+    user: userAddress,
+    option: bet.option === 'Up' || bet.option === 'Down' ? bet.option : 'Up', // Default to Up for new format
+    amount: bet.amount,
+    timestamp: bet.created_at,
+    claimed: bet.claimed,
   };
 }
 
 /**
- * Get market count by reading storage directly
+ * Get market count
+ * Uses getAllMarkets internally (mock mode compatible)
  */
 export async function getMarketCount(): Promise<number> {
-  if (!CONTRACT_ADDRESS) {
-    throw new Error(
-      'Contract not deployed. Please set VITE_CONTRACT_ADDRESS in .env file'
-    );
-  }
-
-  try {
-    // Use public provider for read-only calls
-    const publicProvider = JsonRpcPublicProvider.fromRPCUrl(CURRENT_NETWORK.rpcUrl);
-    
-    // Try to read NEXT_MARKET_ID from storage directly
-    // Contract uses stringToBytes, which in Massa is just UTF-8 encoding
-    // Try both TextEncoder and Args encoding to see which one works
-    const NEXT_MARKET_ID_KEY_UTF8 = new TextEncoder().encode('NEXT_MARKET_ID');
-    const NEXT_MARKET_ID_KEY_ARGS = new Args().addString('NEXT_MARKET_ID').serialize();
-    
-    console.log('Reading storage key (UTF-8):', Array.from(NEXT_MARKET_ID_KEY_UTF8));
-    console.log('Reading storage key (Args):', Array.from(NEXT_MARKET_ID_KEY_ARGS));
-    
-    // Try UTF-8 encoding first
-    let storageValues = await publicProvider.readStorage(CONTRACT_ADDRESS, [NEXT_MARKET_ID_KEY_UTF8]);
-    console.log('Storage values (UTF-8):', storageValues);
-    
-    // If null, try Args encoding
-    if (!storageValues || storageValues.length === 0 || !storageValues[0]) {
-      console.log('Trying Args encoding...');
-      storageValues = await publicProvider.readStorage(CONTRACT_ADDRESS, [NEXT_MARKET_ID_KEY_ARGS]);
-      console.log('Storage values (Args):', storageValues);
-    }
-    
-    // If still null, try to get all storage keys and count MARKET_ prefix keys
-    if (!storageValues || storageValues.length === 0 || !storageValues[0]) {
-      console.log('NEXT_MARKET_ID not found, trying to get all storage keys...');
-      const MARKET_PREFIX = new TextEncoder().encode('MARKET_');
-      const allKeys = await publicProvider.getStorageKeys(CONTRACT_ADDRESS);
-      console.log('All storage keys:', allKeys.map(k => Array.from(k)));
-      
-      // Filter keys that start with MARKET_ prefix
-      const marketKeys = allKeys.filter(key => {
-        if (key.length < MARKET_PREFIX.length) return false;
-        for (let i = 0; i < MARKET_PREFIX.length; i++) {
-          if (key[i] !== MARKET_PREFIX[i]) return false;
-        }
-        return true;
-      });
-      
-      console.log('Market keys found:', marketKeys.length);
-      return marketKeys.length;
-    }
-
-    // Parse u64 from storage
-    const resultArgs = new Args(storageValues[0]);
-    const nextId = Number(resultArgs.nextU64());
-    const count = nextId > 0 ? nextId - 1 : 0;
-    console.log('getMarketCount from storage:', count);
-    return count;
-  } catch (error: any) {
-    console.error('Error reading market count from storage:', error);
-    // Fallback: try contract function
-    try {
-      const publicProvider = JsonRpcPublicProvider.fromRPCUrl(CURRENT_NETWORK.rpcUrl);
-      const contract = new SmartContract(publicProvider, CONTRACT_ADDRESS);
-      console.log('Calling getMarketCount on contract:', CONTRACT_ADDRESS);
-      const args = new Args();
-      const result = await contract.read('getMarketCount', args);
-
-    console.log('getMarketCount result:', result);
-    console.log('getMarketCount result value length:', result.value?.length);
-    console.log('getMarketCount result info:', result.info);
-
-    if (result.info?.error) {
-      console.error('getMarketCount error:', result.info.error);
-      throw new Error(result.info.error);
-    }
-
-    if (!result.value || result.value.length === 0) {
-      console.warn('getMarketCount returned empty result, defaulting to 0');
-      // Empty result means no markets exist yet
-      return 0;
-    }
-
-    // u64 should be 8 bytes, but if it's empty, return 0
-    if (result.value.length < 8) {
-      console.warn('getMarketCount returned result with length < 8, defaulting to 0');
-      return 0;
-    }
-
-    try {
-      const resultArgs = new Args(result.value);
-      const count = Number(resultArgs.nextU64());
-      console.log('getMarketCount parsed count:', count);
-      return count;
-    } catch (error: any) {
-      console.error('Error parsing getMarketCount result:', error);
-      console.error('Result bytes:', Array.from(result.value || []));
-      // If parsing fails, assume 0 markets
-      return 0;
-    }
-    } catch (fallbackError: any) {
-      console.error('Error in contract function fallback:', fallbackError);
-      // If there's an error, assume no markets exist yet
-      return 0;
-    }
-  }
+  const allMarkets = await getAllMarkets();
+  return allMarkets.length;
 }
 
 /**
@@ -794,120 +615,31 @@ export async function getAllMarkets(): Promise<Market[]> {
   let mockMarkets: Market[] = [];
   if (isMockMode() && marketsFromSupabase.length === 0 && localMarkets.length === 0) {
     // Convert DEFAULT_MOCK_MARKETS to Market format
-    mockMarkets = DEFAULT_MOCK_MARKETS.map(mock => ({
-      id: parseInt(mock.id.replace('mock-', '')),
+    mockMarkets = DEFAULT_MOCK_MARKETS.map((mock, index) => ({
+      id: parseInt(mock.id.replace('mock-', '')) || (1000 + index), // Fallback to numeric ID
       creator: mock.creator,
       question: mock.question,
       description: mock.description,
       endTime: new Date(mock.endsAt).getTime(),
-      status: mock.status === 'active' ? 'Active' : (mock.status === 'resolved' ? 'Resolved' : 'Locked'),
+      status: (mock.status === 'active' ? 'Active' : (mock.status === 'resolved' ? 'Resolved' : 'Locked')) as 'Active' | 'Locked' | 'Resolved',
       options: mock.options,
       correctAnswer: mock.correctAnswer || undefined,
       bets: Object.fromEntries(
-        Object.entries(mock.optionAmounts).map(([opt, amt]) => [opt, amt.toString()])
+        Object.entries(mock.optionAmounts).map(([opt, amt]) => [opt, (amt * 1e9).toString()]) // Convert to nanoLIN
       ),
       maxReward: mock.maxReward,
       createdAt: new Date(mock.createdAt).getTime(),
       resolutionPrice: 0,
-      totalPool: mock.totalPool.toString(),
+      totalPool: (mock.totalPool * 1e9).toString(), // Convert to nanoLIN
     }));
     console.log('Using default mock markets:', mockMarkets.length);
   }
 
-  // Try to get markets from blockchain (for verification/backup) - disabled for Linera
-  let blockchainMarkets: Market[] = [];
-  
   // Blockchain reading disabled for Linera (not implemented yet)
-  /*
-  if (CONTRACT_ADDRESS) {
-    try {
-      // Use public provider for read-only calls
-      const publicProvider = JsonRpcPublicProvider.fromRPCUrl(CURRENT_NETWORK.rpcUrl);
-      
-      // Get all storage keys
-      const MARKET_PREFIX = new TextEncoder().encode('MARKET_');
-      const allKeys = await publicProvider.getStorageKeys(CONTRACT_ADDRESS);
-      console.log('All storage keys:', allKeys.length);
-      
-      // Filter keys that start with MARKET_ prefix
-      const marketKeys = allKeys.filter(key => {
-        if (key.length < MARKET_PREFIX.length) return false;
-        for (let i = 0; i < MARKET_PREFIX.length; i++) {
-          if (key[i] !== MARKET_PREFIX[i]) return false;
-        }
-        return true;
-      });
-      
-      console.log('Market keys found:', marketKeys.length);
-      
-      if (marketKeys.length > 0) {
-        // Read all market data from storage
-        const marketDataPromises = marketKeys.map(async (key) => {
-          try {
-            const storageValues = await publicProvider.readStorage(CONTRACT_ADDRESS, [key]);
-            if (!storageValues || storageValues.length === 0 || !storageValues[0]) {
-              return null;
-            }
-            
-            // Deserialize market data
-            const resultArgs = new Args(storageValues[0]);
-            const id = Number(resultArgs.nextU64());
-            const creator = resultArgs.nextString();
-            const question = resultArgs.nextString();
-            const description = resultArgs.nextString();
-            const endTime = Number(resultArgs.nextU64());
-            const statusCode = Number(resultArgs.nextU8());
-            const totalUpBets = resultArgs.nextU64().toString();
-            const totalDownBets = resultArgs.nextU64().toString();
-            const winningOptionCode = Number(resultArgs.nextI32());
-            const createdAt = Number(resultArgs.nextU64());
-            const resolutionPrice = Number(resultArgs.nextU64());
-            
-            const statusMap = ['Active', 'Locked', 'Resolved'] as const;
-            const status = statusMap[statusCode] || 'Active';
-            
-            let winningOption: 'Up' | 'Down' | null = null;
-            if (winningOptionCode === 0) winningOption = 'Up';
-            else if (winningOptionCode === 1) winningOption = 'Down';
-            
-            const totalPool = (BigInt(totalUpBets) + BigInt(totalDownBets)).toString();
-            
-            return {
-              id,
-              creator,
-              question,
-              description,
-              endTime,
-              status,
-              totalUpBets,
-              totalDownBets,
-              winningOption,
-              createdAt,
-              resolutionPrice,
-              totalPool,
-            } as Market;
-          } catch (error: any) {
-            console.error('Error reading market from storage:', error);
-            return null;
-          }
-        });
-        
-        const markets = await Promise.all(marketDataPromises);
-        blockchainMarkets = markets.filter((m): m is Market => m !== null);
-        
-        // Sort by createdAt (newest first)
-        blockchainMarkets.sort((a, b) => b.createdAt - a.createdAt);
-        
-        console.log('Markets loaded from blockchain:', blockchainMarkets.length);
-      }
-    } catch (error: any) {
-      console.error('Error getting markets from blockchain:', error);
-      // Continue with local markets only
-    }
-  }
+  // Markets are fetched from Supabase and local storage only
 
-  // Merge all sources: Supabase (primary), blockchain (verification), local (optimistic), mock (fallback)
-  // Priority: Supabase > Blockchain > Local > Mock
+  // Merge all sources: Supabase (primary), local (optimistic), mock (fallback)
+  // Priority: Supabase > Local > Mock
   const mergedMarkets = new Map<number, Market>();
   
   // Add Supabase markets (highest priority)
@@ -915,14 +647,7 @@ export async function getAllMarkets(): Promise<Market[]> {
     mergedMarkets.set(market.id, market);
   });
   
-  // Add blockchain markets (if not in Supabase)
-  blockchainMarkets.forEach(market => {
-    if (!mergedMarkets.has(market.id)) {
-      mergedMarkets.set(market.id, market);
-    }
-  });
-  
-  // Add local markets (if not in Supabase or blockchain - optimistic updates)
+  // Add local markets (if not in Supabase - optimistic updates)
   // Also check and update their status
   for (const localMarket of localMarkets) {
     if (!mergedMarkets.has(localMarket.id)) {
@@ -945,7 +670,7 @@ export async function getAllMarkets(): Promise<Market[]> {
   const allMarkets = Array.from(mergedMarkets.values());
   allMarkets.sort((a, b) => b.createdAt - a.createdAt); // Newest first
 
-  console.log('Total markets (Supabase + blockchain + local):', allMarkets.length);
+  console.log('Total markets (Supabase + local + mock):', allMarkets.length);
   return allMarkets;
 }
 
